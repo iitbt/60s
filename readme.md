@@ -102,7 +102,12 @@ npm install && node --experimental-strip-types node.ts
 ### Cloudflare Workers
 
 ```bash
-npm install && npx wrangler publish
+npm install && npx wrangler deploy
+npm install && npx wrangler deploy
+npm install && npx wrangler deploy
+npm install && npx wrangler deploy
+npm install && npx wrangler deploy
+npm install && npx wrangler deploy
 ```
 
 ## 60s 的数据更新策略
