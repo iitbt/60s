@@ -10,8 +10,8 @@ class ServiceZhihuHot {
       switch (ctx.state.encoding) {
         case 'text':
           ctx.response.body = `知乎实时热搜\n\n${data
-            .slice(0, 20)
             .map((e, i) => `${i + 1}. ${e.title} (${e.hot_value_desc})`)
+            .slice(0, 20)
             .join('\n')}`
           break
 
@@ -24,14 +24,8 @@ class ServiceZhihuHot {
   }
 
   async #fetch() {
-    const api = 'https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total?limit=1000'
-
-    const response = await fetch(api, {
-      headers: {
-        cookie: globalThis.env.ZHIHU_COOKIE || '',
-      },
-    })
-
+    const api = 'https://api.zhihu.com/topstory/hot-lists/total?limit=30'
+    const response = await fetch(api)
     const { data = [] } = await response.json()
 
     return (data as Item[]).map((e) => ({
@@ -44,7 +38,7 @@ class ServiceZhihuHot {
       comment_cnt: e.target.comment_count,
       created_at: e.target.created * 1000,
       created: Common.localeTime(e.target.created * 1000),
-      link: e.target.url,
+      link: e.target.url.replace('api.', 'www.').replace('questions', 'question'),
     }))
   }
 }

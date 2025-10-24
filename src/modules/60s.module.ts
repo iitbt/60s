@@ -1,7 +1,7 @@
-import { Common } from '../common.ts'
+import { Common, dayjs, TZ_SHANGHAI } from '../common.ts'
+import { SolarDay } from 'tyme4ts'
 
 import type { RouterMiddleware } from '@oak/oak'
-import { Lunar } from '../lunar.ts'
 
 const WEEK_DAYS = ['日', '一', '二', '三', '四', '五', '六']
 
@@ -15,7 +15,8 @@ class Service60s {
 
   handle(): RouterMiddleware<'/60s'> {
     return async (ctx) => {
-      const data = await this.#fetch(ctx.request.url.searchParams.get('date'))
+      const forceUpdate = ctx.request.url.searchParams.has('force-update')
+      const data = await this.#fetch(ctx.request.url.searchParams.get('date'), forceUpdate)
 
       switch (ctx.state.encoding) {
         case 'text': {
@@ -48,52 +49,43 @@ class Service60s {
     }
   }
 
-  getUrl(date: string): string {
-    return `https://raw.githubusercontent.com/vikiboss/60s-static-host/refs/heads/main/static/60s/${date}.json`
-  }
-
-  getVercelUrl(date: string): string {
-    return `https://60s-static.viki.moe/60s/${date}.json`
-  }
-
-  getJsDelivrUrl(date: string): string {
-    return `https://cdn.jsdelivr.net/gh/vikiboss/60s-static-host/static/60s/${date}.json`
-  }
-
   async tryUrl(date: string) {
-    const response = await fetch(this.getUrl(date))
-      .catch(() => fetch(this.getVercelUrl(date)))
-      .catch(() => fetch(this.getJsDelivrUrl(date)))
+    const response = await Common.tryRepoUrl({
+      repo: 'vikiboss/60s-static-host',
+      path: `static/60s/${date}.json`,
+      alternatives: [
+        `https://60s-static.viki.moe/60s/${date}.json`,
+        `https://60s-static-host.vercel.app/60s/${date}.json`,
+      ],
+    })
 
-    if (response.ok) {
-      const now = Date.now()
-      const data = await response.json()
+    if (!response || !response.ok) return null
 
-      if (!data?.news?.length) return null
+    const data = await response.json()
+    if (!data?.news?.length) return null
 
-      return {
-        ...data,
-        day_of_week: getDayOfWeek(data.date),
-        lunar_date: Lunar.toLunar(new Date(data.date)).formatted,
-        api_updated: Common.localeTime(now),
-        api_updated_at: now,
-      } as DailyNewsItem
-    } else {
-      return null
-    }
+    const now = dayjs().tz(TZ_SHANGHAI)
+
+    return {
+      ...data,
+      day_of_week: getDayOfWeek(data.date),
+      lunar_date: SolarDay.fromYmd(now.year(), now.month() + 1, now.date())
+        .getLunarDay()
+        .toString()
+        .replace('农历', ''),
+      api_updated: Common.localeTime(now.valueOf()),
+      api_updated_at: now.valueOf(),
+    } satisfies DailyNewsItem
   }
 
-  async #fetch(date?: string | null): Promise<DailyNewsItem> {
+  async #fetch(date?: string | null, forceUpdate = false): Promise<DailyNewsItem> {
     const today = date || Common.localeDate(Date.now()).replace(/\//g, '-')
     const yesterday = Common.localeDate(Date.now() - 24 * 60 * 60 * 1000).replace(/\//g, '-')
-    const cachedItem = this.#cache.get(today)
+    const theDayBeforeYesterday = Common.localeDate(Date.now() - 2 * 24 * 60 * 60 * 1000).replace(/\//g, '-')
 
-    if (cachedItem) return cachedItem
-
-    for (const date of [today, yesterday]) {
+    for (const date of [today, yesterday, theDayBeforeYesterday]) {
       const cache = this.#cache.get(date)
-
-      if (cache) return cache
+      if (cache && !forceUpdate) return cache
 
       const data = await this.tryUrl(date)
 
